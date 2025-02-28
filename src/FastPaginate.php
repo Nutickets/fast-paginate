@@ -7,6 +7,7 @@ namespace Hammerstone\FastPaginate;
 
 use Closure;
 use Illuminate\Database\Query\Expression;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class FastPaginate
