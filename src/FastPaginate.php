@@ -7,6 +7,8 @@ namespace Hammerstone\FastPaginate;
 
 use Closure;
 use Illuminate\Database\Query\Expression;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class FastPaginate
 {
@@ -37,7 +39,13 @@ class FastPaginate
 
     protected function paginate(string $paginationMethod, Closure $paginatorOutput)
     {
-        return function ($perPage = null, $columns = ['*'], $pageName = 'page', $page = null) use (
+        return function (
+            $perPage = null,
+            $columns = ['*'],
+            $pageName = 'page',
+            $page = null,
+            $countQueryCallback = null,
+        ) use (
             $paginationMethod,
             $paginatorOutput
         ) {
@@ -46,9 +54,9 @@ class FastPaginate
             // Havings, groups, and unions don't work well with this paradigm, because
             // we are counting on each row of the inner query to return a primary key
             // that we can use. When grouping, that's not always the case.
-            if (filled($base->havings) || filled($base->groups) || filled($base->unions)) {
-                return $this->{$paginationMethod}($perPage, $columns, $pageName, $page);
-            }
+//            if (filled($base->havings) || filled($base->groups) || filled($base->unions)) {
+//                return $this->{$paginationMethod}($perPage, $columns, $pageName, $page);
+//            }
 
             $model = $this->newModelInstance();
             $key = $model->getKeyName();
@@ -68,6 +76,11 @@ class FastPaginate
                 return $this->{$paginationMethod}($perPage, $columns, $pageName, $page);
             }
 
+            /** @var bool $canReplaceGroupByWithDistinct */
+            // This method calls out to one of our own internal builder macros to determine whether
+            // group by clauses can be replaced with distinct to further improve query performance.
+            $canReplaceGroupByWithDistinct = $this->canReplaceGroupByWithDistinct();
+
             // This is the copy of the query that becomes
             // the inner query that selects keys only.
             $paginator = $this->clone()
@@ -78,7 +91,18 @@ class FastPaginate
                 // remain on the query that actually gets the records.
                 // (withoutEagerLoads not available on Laravel 8.)
                 ->setEagerLoads([])
-                ->{$paginationMethod}($perPage, ['*'], $pageName, $page);
+                // Where possible, we want to use "select DISTINCT id" .. rather than "group by id"
+                // Simply because it outperforms it significantly when dealing with the inner ids select
+                ->when($canReplaceGroupByWithDistinct, fn ($builder) => $builder->withoutGroupBy())
+                // Here we are using our (nutickets) custom paginate method, because we need the count to be performed
+                // as a subquery "select count() from (our query)" rather than "select count from our query" to report
+                // the correct counts according to our "select distinct" / "group by" changes made above.
+                ->toLengthAwarePaginator(
+                    perPage: $perPage,
+                    pageName: $pageName,
+                    page: $page,
+                    countQueryCallback: $countQueryCallback
+                );
 
             // Get the key values from the records on the current page without mutating them.
             $ids = $paginator->getCollection()->map->getRawOriginal($key)->toArray();
@@ -134,13 +158,43 @@ class FastPaginate
             })
             ->flatten(1);
 
+        $havings = collect($base->havings)
+            ->pluck('column')
+            ->map(function ($column) use ($base) {
+                $column = $column instanceof Expression ? $column->getValue($base->grammar) : $column;
+
+                // Use the grammar to wrap them, so that our `str_contains`
+                // (further down) doesn't return any false positives.
+                return [
+                    $column,
+                    $base->grammar->wrap($column),
+                ];
+            })
+            ->flatten(1);
+
+        // IF we are grouping by $table.$key exclusively, then remove the group by and use DISTINCT instead.
+        // This yields us better performance for the same results on the inner select that plucks the ids.
+        if ($builder->canReplaceGroupByWithDistinct()) {
+            $primaryKeySelect = DB::raw("DISTINCT $table.$key");
+        } else {
+            $primaryKeySelect = "$table.$key";
+        }
+
         return collect($base->columns)
-            ->filter(function ($column) use ($orders, $base) {
+            ->filter(function ($column) use ($orders, $base, $havings) {
                 $column = $column instanceof Expression ? $column->getValue($base->grammar) : $base->grammar->wrap($column);
                 foreach ($orders as $order) {
                     // If we're ordering by this column, then we need to
                     // keep it in the inner query.
                     if (str_contains($column, "as $order")) {
+                        return true;
+                    }
+                }
+
+                foreach ($havings as $having) {
+                    // If we're using this column in the having, then
+                    // we need to keep it in the inner query.
+                    if (str_contains($column, "as $having")) {
                         return true;
                     }
                 }
@@ -157,7 +211,7 @@ class FastPaginate
                     throw new QueryIncompatibleWithFastPagination;
                 }
             })
-            ->prepend("$table.$key")
+            ->prepend($primaryKeySelect)
             ->unique()
             ->values()
             ->toArray();
