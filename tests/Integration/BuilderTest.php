@@ -1,20 +1,22 @@
 <?php
+
 /**
  * @author Aaron Francis <aarondfrancis@gmail.com|https://twitter.com/aarondfrancis>
  */
 
-namespace Hammerstone\FastPaginate\Tests\Integration;
+namespace AaronFrancis\FastPaginate\Tests\Integration;
 
-use Hammerstone\FastPaginate\Tests\Support\NotificationStringKey;
-use Hammerstone\FastPaginate\Tests\Support\User;
-use Hammerstone\FastPaginate\Tests\Support\UserCollection;
-use Hammerstone\FastPaginate\Tests\Support\UserCustomPage;
-use Hammerstone\FastPaginate\Tests\Support\UserCustomTable;
-use Hammerstone\FastPaginate\Tests\Support\UserMutatedId;
-use Hammerstone\FastPaginate\Tests\Support\UserWithCustomCollection;
+use AaronFrancis\FastPaginate\Tests\Support\NotificationStringKey;
+use AaronFrancis\FastPaginate\Tests\Support\User;
+use AaronFrancis\FastPaginate\Tests\Support\UserCollection;
+use AaronFrancis\FastPaginate\Tests\Support\UserCustomPage;
+use AaronFrancis\FastPaginate\Tests\Support\UserCustomTable;
+use AaronFrancis\FastPaginate\Tests\Support\UserMutatedId;
+use AaronFrancis\FastPaginate\Tests\Support\UserWithCustomCollection;
 use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
+use PHPUnit\Framework\Attributes\Test;
 
 class BuilderTest extends Base
 {
@@ -22,7 +24,7 @@ class BuilderTest extends Base
 
     private const TOTAL_POSTS_FIRST_USER = 1;
 
-    /** @test */
+    #[Test]
     public function basic_test()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -36,7 +38,7 @@ class BuilderTest extends Base
         $this->assertCount(3, $queries);
 
         $this->assertEquals(
-            'select * from `users` where `users`.`id` in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15) limit 16 offset 0',
+            'select * from `users` where `users`.`id` in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15) order by `users`.`id` asc limit 16 offset 0',
             $queries[2]['query']
         );
 
@@ -45,7 +47,7 @@ class BuilderTest extends Base
         $this->assertEquals(self::TOTAL_USERS, $results->total());
     }
 
-    /** @test */
+    #[Test]
     public function different_page_size()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -56,7 +58,7 @@ class BuilderTest extends Base
         $this->assertEquals(5, $results->count());
 
         $this->assertEquals(
-            'select * from `users` where `users`.`id` in (1, 2, 3, 4, 5) limit 6 offset 0',
+            'select * from `users` where `users`.`id` in (1, 2, 3, 4, 5) order by `users`.`id` asc limit 6 offset 0',
             $queries[2]['query']
         );
 
@@ -65,7 +67,7 @@ class BuilderTest extends Base
         $this->assertEquals(self::TOTAL_USERS, $results->total());
     }
 
-    /** @test */
+    #[Test]
     public function page_2()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -76,7 +78,7 @@ class BuilderTest extends Base
         $this->assertEquals(5, $results->count());
 
         $this->assertEquals(
-            'select * from `users` where `users`.`id` in (6, 7, 8, 9, 10) limit 6 offset 0',
+            'select * from `users` where `users`.`id` in (6, 7, 8, 9, 10) order by `users`.`id` asc limit 6 offset 0',
             $queries[2]['query']
         );
 
@@ -85,7 +87,30 @@ class BuilderTest extends Base
         $this->assertEquals(self::TOTAL_USERS, $results->total());
     }
 
-    /** @test */
+    #[Test]
+    public function total_can_be_passed_to_skip_count_query()
+    {
+        $queries = $this->withQueriesLogged(function () use (&$results) {
+            // Pass a custom total to skip the COUNT(*) query
+            $results = User::query()->fastPaginate(5, ['*'], 'page', 1, 100);
+        });
+
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $results */
+        $this->assertEquals(5, $results->count());
+
+        // The $total parameter was added in Laravel 11. On Laravel 10,
+        // we can't pass it through, so the COUNT query still runs.
+        if (version_compare(app()->version(), '11.0.0', '>=')) {
+            // Should only be 2 queries (inner select + outer select), no COUNT query
+            $this->assertCount(2, $queries);
+
+            // The total should be the custom value we passed
+            $this->assertEquals(100, $results->total());
+            $this->assertTrue($results->hasMorePages());
+        }
+    }
+
+    #[Test]
     public function pk_attribute_mutations_are_skipped()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -96,12 +121,12 @@ class BuilderTest extends Base
         $this->assertEquals(5, $results->count());
 
         $this->assertEquals(
-            'select * from `users` where `users`.`id` in (1, 2, 3, 4, 5) limit 6 offset 0',
+            'select * from `users` where `users`.`id` in (1, 2, 3, 4, 5) order by `users`.`id` asc limit 6 offset 0',
             $queries[2]['query']
         );
     }
 
-    /** @test */
+    #[Test]
     public function custom_page_is_preserved()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -112,7 +137,7 @@ class BuilderTest extends Base
         $this->assertEquals(2, $results->count());
 
         $this->assertEquals(
-            'select * from `users` where `users`.`id` in (1, 2) limit 3 offset 0',
+            'select * from `users` where `users`.`id` in (1, 2) order by `users`.`id` asc limit 3 offset 0',
             $queries[2]['query']
         );
 
@@ -121,7 +146,7 @@ class BuilderTest extends Base
         $this->assertEquals(self::TOTAL_USERS, $results->total());
     }
 
-    /** @test */
+    #[Test]
     public function not_exists_page_is_preserved()
     {
         $exists = User::query()->fastPaginate();
@@ -139,7 +164,7 @@ class BuilderTest extends Base
         $this->assertFalse($doesnt->hasMorePages());
     }
 
-    /** @test */
+    #[Test]
     public function custom_table_is_preserved()
     {
         $this->expectException(QueryException::class);
@@ -148,7 +173,27 @@ class BuilderTest extends Base
         UserCustomTable::query()->fastPaginate();
     }
 
-    /** @test */
+    #[Test]
+    public function default_order_by_primary_key_when_no_order_specified()
+    {
+        $queries = $this->withQueriesLogged(function () use (&$results) {
+            $results = User::query()->fastPaginate(5);
+        });
+
+        // Inner query should have order by primary key to ensure deterministic results
+        $this->assertEquals(
+            'select `users`.`id` from `users` order by `users`.`id` asc limit 5 offset 0',
+            $queries[1]['query']
+        );
+
+        // Outer query should also preserve the order
+        $this->assertEquals(
+            'select * from `users` where `users`.`id` in (1, 2, 3, 4, 5) order by `users`.`id` asc limit 6 offset 0',
+            $queries[2]['query']
+        );
+    }
+
+    #[Test]
     public function order_is_propagated()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -161,7 +206,7 @@ class BuilderTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function order_by_raw_is_propagated()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -174,7 +219,7 @@ class BuilderTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function eager_loads_are_cleared_on_inner_query()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -191,7 +236,7 @@ class BuilderTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function eager_loads_are_loaded_on_outer_query()
     {
         $this->withQueriesLogged(function () use (&$results) {
@@ -202,27 +247,27 @@ class BuilderTest extends Base
         $this->assertEquals(1, $results->first()->posts->count());
     }
 
-    /** @test */
+    #[Test]
     public function selects_are_overwritten()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
             $results = User::query()->selectRaw('(select 1 as complicated_subquery)')->fastPaginate();
         });
 
-        // Dropped for our inner query
+        // Dropped for our inner query (default order by primary key is added)
         $this->assertEquals(
-            'select `users`.`id` from `users` limit 15 offset 0',
+            'select `users`.`id` from `users` order by `users`.`id` asc limit 15 offset 0',
             $queries[1]['query']
         );
 
-        // Restored for the user's query
+        // Restored for the user's query (with default order)
         $this->assertEquals(
-            'select (select 1 as complicated_subquery) from `users` where `users`.`id` in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15) limit 16 offset 0',
+            'select (select 1 as complicated_subquery) from `users` where `users`.`id` in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15) order by `users`.`id` asc limit 16 offset 0',
             $queries[2]['query']
         );
     }
 
-    /** @test */
+    #[Test]
     public function unquoted_selects_are_preserved_if_used_in_order_by()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -235,7 +280,7 @@ class BuilderTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function using_expressions_for_order_work()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -250,7 +295,7 @@ class BuilderTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function havings_defer()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -267,7 +312,7 @@ class BuilderTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function standard_with_count_works()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -286,7 +331,7 @@ class BuilderTest extends Base
         $this->assertEquals(self::TOTAL_USERS, $results->total());
     }
 
-    /** @test */
+    #[Test]
     public function aliased_with_count()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -300,7 +345,7 @@ class BuilderTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function unordered_with_count_is_ignored()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -314,7 +359,7 @@ class BuilderTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function uuids_are_bound_correctly()
     {
         $this->seedStringNotifications();
@@ -325,7 +370,7 @@ class BuilderTest extends Base
 
         $this->assertCount(3, $queries);
         $this->assertEquals(
-            'select * from `notifications` where `notifications`.`id` in (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) limit 16 offset 0',
+            'select * from `notifications` where `notifications`.`id` in (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) order by `notifications`.`id` asc limit 16 offset 0',
             $queries[2]['query']
         );
 
@@ -333,7 +378,7 @@ class BuilderTest extends Base
         $this->assertEquals('64bf6df6-06d7-11ed-b939-0001', $queries[2]['bindings'][0]);
     }
 
-    /** @test */
+    #[Test]
     public function groups_are_skipped()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -347,7 +392,7 @@ class BuilderTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function basic_simple_test()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -361,7 +406,7 @@ class BuilderTest extends Base
         $this->assertCount(2, $queries);
 
         $this->assertEquals(
-            'select * from `users` where `users`.`id` in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15) limit 16 offset 0',
+            'select * from `users` where `users`.`id` in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15) order by `users`.`id` asc limit 16 offset 0',
             $queries[1]['query']
         );
 
@@ -369,7 +414,7 @@ class BuilderTest extends Base
         $this->assertEquals(1, $results->currentPage());
     }
 
-    /** @test */
+    #[Test]
     public function basic_simple_test_page_two()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -383,7 +428,7 @@ class BuilderTest extends Base
         $this->assertCount(2, $queries);
 
         $this->assertEquals(
-            'select * from `users` where `users`.`id` in (6, 7, 8, 9, 10) limit 6 offset 0',
+            'select * from `users` where `users`.`id` in (6, 7, 8, 9, 10) order by `users`.`id` asc limit 6 offset 0',
             $queries[1]['query']
         );
 
@@ -391,7 +436,7 @@ class BuilderTest extends Base
         $this->assertEquals(2, $results->currentPage());
     }
 
-    /** @test */
+    #[Test]
     public function basic_simple_test_from_relation()
     {
         $queries = $this->withQueriesLogged(function () use (&$results) {
@@ -405,7 +450,7 @@ class BuilderTest extends Base
         $this->assertCount(3, $queries);
 
         $this->assertEquals(
-            'select * from `posts` where `posts`.`user_id` = ? and `posts`.`user_id` is not null and `posts`.`id` in (1) limit 16 offset 0',
+            'select * from `posts` where `posts`.`user_id` = ? and `posts`.`user_id` is not null and `posts`.`id` in (1) order by `posts`.`id` asc limit 16 offset 0',
             $queries[2]['query']
         );
 
@@ -413,7 +458,7 @@ class BuilderTest extends Base
         $this->assertEquals(1, $results->currentPage());
     }
 
-    /** @test */
+    #[Test]
     public function custom_collection_is_preserved()
     {
         $results = UserWithCustomCollection::query()->simpleFastPaginate();
@@ -421,7 +466,7 @@ class BuilderTest extends Base
         $this->assertInstanceOf(UserCollection::class, $results->getCollection());
     }
 
-    /** @test */
+    #[Test]
     public function with_sum_has_the_correct_number_of_parameters()
     {
         $queries = $this->withQueriesLogged(function () use (&$fast, &$regular) {

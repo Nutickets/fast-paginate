@@ -1,15 +1,17 @@
 <?php
+
 /**
  * @author Aaron Francis <aarondfrancis@gmail.com|https://twitter.com/aarondfrancis>
  */
 
-namespace Hammerstone\FastPaginate\Tests\Integration;
+namespace AaronFrancis\FastPaginate\Tests\Integration;
 
-use Hammerstone\FastPaginate\Tests\Support\User;
+use AaronFrancis\FastPaginate\Tests\Support\User;
+use PHPUnit\Framework\Attributes\Test;
 
 class RelationTest extends Base
 {
-    /** @test */
+    #[Test]
     public function basic_test()
     {
         $user = User::first();
@@ -18,12 +20,12 @@ class RelationTest extends Base
         });
 
         $this->assertEquals(
-            'select * from `posts` where `posts`.`user_id` = ? and `posts`.`user_id` is not null and `posts`.`id` in (1) limit 16 offset 0',
+            'select * from `posts` where `posts`.`user_id` = ? and `posts`.`user_id` is not null and `posts`.`id` in (1) order by `posts`.`id` asc limit 16 offset 0',
             $queries[2]['query']
         );
     }
 
-    /** @test */
+    #[Test]
     public function belongs_to_many_test()
     {
         $user = User::first();
@@ -41,7 +43,7 @@ class RelationTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function belongs_to_many_add_select_alias_test()
     {
         $user = User::first();
@@ -63,7 +65,7 @@ class RelationTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function belongs_to_many_order_by_alias_test()
     {
         $user = User::first();
@@ -85,7 +87,7 @@ class RelationTest extends Base
         );
     }
 
-    /** @test */
+    #[Test]
     public function belongs_to_many_hydrating_pivot_test()
     {
         $user = User::first();

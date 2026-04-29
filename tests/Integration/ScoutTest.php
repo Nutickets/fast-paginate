@@ -1,15 +1,17 @@
 <?php
+
 /**
  * @author Aaron Francis <aarondfrancis@gmail.com|https://twitter.com/aarondfrancis>
  */
 
-namespace Hammerstone\FastPaginate\Tests\Integration;
+namespace AaronFrancis\FastPaginate\Tests\Integration;
 
-use Hammerstone\FastPaginate\Tests\Support\UserScout;
+use AaronFrancis\FastPaginate\Tests\Support\UserScout;
+use PHPUnit\Framework\Attributes\Test;
 
 class ScoutTest extends Base
 {
-    /** @test */
+    #[Test]
     public function basic_scout_test()
     {
         $queries = $this->withQueriesLogged(function () {

@@ -1,9 +1,10 @@
 <?php
+
 /**
- * @author Aaron Francis <aaron@hammerstone.dev>
+ * @author Aaron Francis <aaron@tryhardstudios.com>
  */
 
-namespace Hammerstone\FastPaginate;
+namespace AaronFrancis\FastPaginate;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -13,11 +14,11 @@ class FastPaginateProvider extends ServiceProvider
 {
     public function boot()
     {
-        Builder::mixin(new BuilderMixin());
-        Relation::mixin(new RelationMixin());
+        Builder::mixin(new BuilderMixin);
+        Relation::mixin(new RelationMixin);
 
         if (class_exists(\Laravel\Scout\Builder::class)) {
-            \Laravel\Scout\Builder::mixin(new ScoutMixin());
+            \Laravel\Scout\Builder::mixin(new ScoutMixin);
         }
     }
 }

@@ -1,9 +1,10 @@
 <?php
+
 /**
  * @author Aaron Francis <aarondfrancis@gmail.com|https://twitter.com/aarondfrancis>
  */
 
-namespace Hammerstone\FastPaginate;
+namespace AaronFrancis\FastPaginate;
 
 use Closure;
 use Illuminate\Database\Query\Expression;
@@ -12,6 +13,21 @@ use Illuminate\Support\Str;
 
 class FastPaginate
 {
+    /**
+     * Laravel 11+ added a $total parameter to paginate(). We need to
+     * conditionally pass it to avoid errors on Laravel 10.
+     *
+     * @internal
+     */
+    public static function callPaginator($builder, string $method, $perPage, $columns, $pageName, $page, $total)
+    {
+        if (version_compare(app()->version(), '11.0.0', '>=')) {
+            return $builder->{$method}($perPage, $columns, $pageName, $page, $total);
+        }
+
+        return $builder->{$method}($perPage, $columns, $pageName, $page);
+    }
+
     public function fastPaginate()
     {
         return $this->paginate('paginate', function (array $items, $paginator) {
@@ -44,6 +60,7 @@ class FastPaginate
             $columns = ['*'],
             $pageName = 'page',
             $page = null,
+            $total = null,
             $countQueryCallback = null,
         ) use (
             $paginationMethod,
@@ -55,7 +72,7 @@ class FastPaginate
             // we are counting on each row of the inner query to return a primary key
             // that we can use. When grouping, that's not always the case.
 //            if (filled($base->havings) || filled($base->groups) || filled($base->unions)) {
-//                return $this->{$paginationMethod}($perPage, $columns, $pageName, $page);
+//                return FastPaginate::callPaginator($this, $paginationMethod, $perPage, $columns, $pageName, $page, $total);
 //            }
 
             $model = $this->newModelInstance();
@@ -65,15 +82,23 @@ class FastPaginate
             // Apparently some databases allow for offset 0 with no limit and some people
             // use it as a hack to get all records. Since that defeats the purpose of
             // fast pagination, we'll just return the normal paginator in that case.
-            // https://github.com/hammerstonedev/fast-paginate/issues/39
+            // https://github.com/aarondfrancis/fast-paginate/issues/39
             if ($perPage === -1) {
-                return $this->{$paginationMethod}($perPage, $columns, $pageName, $page);
+                return FastPaginate::callPaginator($this, $paginationMethod, $perPage, $columns, $pageName, $page, $total);
             }
 
             try {
                 $innerSelectColumns = FastPaginate::getInnerSelectColumns($this);
             } catch (QueryIncompatibleWithFastPagination $e) {
-                return $this->{$paginationMethod}($perPage, $columns, $pageName, $page);
+                return FastPaginate::callPaginator($this, $paginationMethod, $perPage, $columns, $pageName, $page, $total);
+            }
+
+            // If no order is specified, we need to add a default order by
+            // primary key to ensure deterministic results. Without this,
+            // MySQL may return rows in an unpredictable order.
+            // https://github.com/aarondfrancis/fast-paginate/issues/73
+            if (empty($base->orders)) {
+                $this->orderBy("$table.$key");
             }
 
             /** @var bool $canReplaceGroupByWithDistinct */
@@ -83,7 +108,7 @@ class FastPaginate
 
             // This is the copy of the query that becomes
             // the inner query that selects keys only.
-            $paginator = $this->clone()
+            $innerQuery = $this->clone()
                 // Only select the primary key, we'll get the full
                 // records in a second query below.
                 ->select($innerSelectColumns)
@@ -103,6 +128,8 @@ class FastPaginate
                     page: $page,
                     countQueryCallback: $countQueryCallback
                 );
+
+            $paginator = FastPaginate::callPaginator($innerQuery, $paginationMethod, $perPage, ['*'], $pageName, $page, $total);
 
             // Get the key values from the records on the current page without mutating them.
             $ids = $paginator->getCollection()->map->getRawOriginal($key)->toArray();
@@ -148,7 +175,7 @@ class FastPaginate
                 // Not everyone quotes their custom selects, which
                 // is totally reasonable. We'll look for both
                 // quoted and unquoted, as a kindness.
-                // See https://github.com/hammerstonedev/fast-paginate/pull/57
+                // See https://github.com/aarondfrancis/fast-paginate/pull/57
                 $column = $column instanceof Expression ? $column->getValue($base->grammar) : $column;
 
                 return [
