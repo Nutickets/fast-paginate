@@ -108,7 +108,7 @@ class FastPaginate
 
             // This is the copy of the query that becomes
             // the inner query that selects keys only.
-            $innerQuery = $this->clone()
+            $paginator = $this->clone()
                 // Only select the primary key, we'll get the full
                 // records in a second query below.
                 ->select($innerSelectColumns)
@@ -129,7 +129,7 @@ class FastPaginate
                     countQueryCallback: $countQueryCallback
                 );
 
-            $paginator = FastPaginate::callPaginator($innerQuery, $paginationMethod, $perPage, ['*'], $pageName, $page, $total);
+//            $paginator = FastPaginate::callPaginator($innerQuery, $paginationMethod, $perPage, ['*'], $pageName, $page, $total);
 
             // Get the key values from the records on the current page without mutating them.
             $ids = $paginator->getCollection()->map->getRawOriginal($key)->toArray();
